@@ -1,0 +1,16 @@
+[package]
+name = "yesqlr"
+version = "0.1.0"
+edition = "2021"
+authors = ["Kailash Nadh"]
+description = "Parse SQL files with multiple named queries into a map. Port of goyesql."
+license = "MIT"
+homepage = "https://github.com/knadh/yesqlr"
+repository = "https://github.com/knadh/yesqlr"
+keywords = ["sql", "query", "sql-parser", "sql-file"]
+categories = ["database", "parsing"]
+
+[dependencies]
+regex = "1.5"
+lazy_static = "1.4"
+yesqlr_macros = { path = "../yesqlr_macros" }
