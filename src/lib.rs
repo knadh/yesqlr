@@ -88,19 +88,10 @@ impl std::error::Error for ParseError {}
 ///
 /// - `query`: The SQL query string.
 /// - `tags`: A map of tag names to their corresponding values.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct Query {
     pub query: String,
     pub tags: HashMap<String, String>,
-}
-
-impl Default for Query {
-    fn default() -> Self {
-        Query {
-            query: String::new(),
-            tags: HashMap::new(),
-        }
-    }
 }
 
 // Map of query names (--name from the file) to the Query.
