@@ -78,10 +78,10 @@ struct ParsedLine {
 /// ```rust
 /// use yesqlr::parse_file;
 ///
-/// let queries = parse_file("test.sql").expect("Failed to parse file");
+/// let queries = parse_file("test.sql").expect("error parsing file");
 /// ```
 pub fn parse_file<P: AsRef<Path>>(path: P) -> Result<Queries, ParseError> {
-    let file = File::open(path).map_err(|e| ParseError(format!("Error opening file: {}", e)))?;
+    let file = File::open(path).map_err(|e| ParseError(format!("error reading file: {}", e)))?;
     parse(file)
 }
 
@@ -98,12 +98,12 @@ pub fn parse_file<P: AsRef<Path>>(path: P) -> Result<Queries, ParseError> {
 /// # Examples
 ///
 /// ```rust
-/// use yesqlr::parse_file;
+/// use yesqlr::parse;
 ///
-/// let queries = parse_file("test.sql").expect("Failed to parse file");
+/// let queries = parse("--name: test\nSELECT 1;".as_bytes()).expect("error parsing bytes");
 /// ```
 
-fn parse<R: Read>(reader: R) -> Result<Queries, ParseError> {
+pub fn parse<R: Read>(reader: R) -> Result<Queries, ParseError> {
     let mut name = String::new();
     let mut queries = Queries::new();
 
