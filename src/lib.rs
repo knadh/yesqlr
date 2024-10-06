@@ -32,8 +32,8 @@ impl std::error::Error for ParseError {}
 /// - `tags`: A map of tag names to their corresponding values.
 #[derive(Debug, Clone)]
 pub struct Query {
-    query: String,
-    tags: HashMap<String, String>,
+    pub query: String,
+    pub tags: HashMap<String, String>,
 }
 
 impl Default for Query {
