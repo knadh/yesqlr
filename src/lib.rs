@@ -31,6 +31,14 @@ pub struct Query {
     query: String,
     tags: HashMap<String, String>,
 }
+impl Default for Query {
+    fn default() -> Self {
+        Query {
+            query: String::new(),
+            tags: HashMap::new(),
+        }
+    }
+}
 
 // Map of query names (--name from the file) to the Query.
 pub type Queries = HashMap<String, Query>;
