@@ -82,7 +82,7 @@ struct ParsedLine {
 /// ```
 pub fn parse_file<P: AsRef<Path>>(path: P) -> Result<Queries, ParseError> {
     let file = File::open(path).map_err(|e| ParseError(format!("Error opening file: {}", e)))?;
-    parse_reader(file)
+    parse(file)
 }
 
 /// Parses the given bytes and returns a map of queries indexed by their `--name` tag.
@@ -102,11 +102,8 @@ pub fn parse_file<P: AsRef<Path>>(path: P) -> Result<Queries, ParseError> {
 ///
 /// let queries = parse_file("test.sql").expect("Failed to parse file");
 /// ```
-pub fn parse(bytes: &[u8]) -> Result<Queries, ParseError> {
-    parse_reader(bytes)
-}
 
-fn parse_reader<R: Read>(reader: R) -> Result<Queries, ParseError> {
+fn parse<R: Read>(reader: R) -> Result<Queries, ParseError> {
     let mut name = String::new();
     let mut queries = Queries::new();
 
@@ -357,13 +354,13 @@ FROM comments;
 
     #[test]
     fn test_parse_invalid_bytes() {
-        let result = parse(b"this will fail");
+        let result = parse("this will fail".as_bytes());
         assert!(!result.is_ok());
     }
 
     #[test]
     fn test_parse_bytes_no_panic() {
-        let result = parse(b"-- name: byte-me\nSELECT * FROM bytes;");
+        let result = parse("-- name: byte-me\nSELECT * FROM bytes;".as_bytes());
         assert!(result.is_ok());
     }
 }
