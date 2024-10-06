@@ -24,13 +24,18 @@ impl std::fmt::Display for ParseError {
 
 impl std::error::Error for ParseError {}
 
-// Query represents a single SQL query parsed from the file with tags
-// that appear in the --name, --something-else format.
+/// Represents a single SQL query parsed from the file with associated tags.
+///
+/// # Fields
+///
+/// - `query`: The SQL query string.
+/// - `tags`: A map of tag names to their corresponding values.
 #[derive(Debug, Clone)]
 pub struct Query {
     query: String,
     tags: HashMap<String, String>,
 }
+
 impl Default for Query {
     fn default() -> Self {
         Query {
@@ -58,15 +63,45 @@ struct ParsedLine {
     value: String,
 }
 
-// Reads a .sql file and parse it into a map of queries by the --name tag
-// expected above every distinct query.
+/// Parses a `.sql` file and returns a map of queries indexed by their `--name` tag.
+///
+/// # Arguments
+///
+/// * `path` - The path to the `.sql` file to parse.
+///
+/// # Errors
+///
+/// Returns a `ParseError` if the file cannot be read or if the content is malformed.
+///
+/// # Examples
+///
+/// ```rust
+/// use yesqlr::parse_file;
+///
+/// let queries = parse_file("test.sql").expect("Failed to parse file");
+/// ```
 pub fn parse_file<P: AsRef<Path>>(path: P) -> Result<Queries, ParseError> {
     let file = File::open(path).map_err(|e| ParseError(format!("Error opening file: {}", e)))?;
     parse_reader(file)
 }
 
-// Parses the given raw SQL bytes into a map of queries by the --name tag
-// expected above every distinct query.
+/// Parses the given bytes and returns a map of queries indexed by their `--name` tag.
+///
+/// # Arguments
+///
+/// * `path` - The path to the `.sql` file to parse.
+///
+/// # Errors
+///
+/// Returns a `ParseError` if the file cannot be read or if the content is malformed.
+///
+/// # Examples
+///
+/// ```rust
+/// use yesqlr::parse_file;
+///
+/// let queries = parse_file("test.sql").expect("Failed to parse file");
+/// ```
 pub fn parse(bytes: &[u8]) -> Result<Queries, ParseError> {
     parse_reader(bytes)
 }
@@ -240,17 +275,17 @@ mod tests {
 
     #[test]
     fn test_scanner_err_tags() {
-        let tag_doubloon = r#"
+        let double = r#"
 -- name: first
 -- name: clone
 SELECT * FROM foo;
 "#;
 
-        let tag_missing = r#"
+        let missing = r#"
 SELECT * FROM missing;
 "#;
 
-        for (key, content) in [("doubloon", tag_doubloon), ("missing", tag_missing)] {
+        for (key, content) in [("double", double), ("missing", missing)] {
             let result = parse(content.as_bytes());
             assert!(result.is_err(), "expected error for {}, but got Ok", key);
         }
