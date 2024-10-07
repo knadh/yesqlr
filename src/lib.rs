@@ -64,21 +64,42 @@ use std::io::{BufRead, BufReader, Read};
 use std::path::Path;
 
 const TAG_NAME: &str = "name";
+const TAG_END: &str = "end";
 
 lazy_static! {
-    static ref RE_TAG: Regex = Regex::new(r"^\s*--\s*(.+)\s*:\s*(.+)").unwrap();
+    static ref RE_TAG: Regex = Regex::new(r"^\s*--\s*(\w+)\s*:\s*(.+)").unwrap();
     static ref RE_COMMENT: Regex = Regex::new(r"^\s*--\s*(.*)").unwrap();
+    static ref RE_PLACEHOLDER: Regex = Regex::new(r"\$\d+").unwrap(); // Match placeholders like $1, $2.
 }
+
 
 // Represents an parse error.
 #[derive(Debug)]
-pub struct ParseError(String);
+pub enum ParseError {
+    IOError(String),
+    DuplicateTag(String),
+    MissingNameTag(String),
+    EmptyQuery(String),
+    InvalidTagOrder(String),
+    UnmatchedPlaceholders(String),
+    MalformedSQL(String),
+}
+
 
 impl std::fmt::Display for ParseError {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        write!(f, "{}", self.0)
+        match self {
+            ParseError::IOError(e) => write!(f, "IO error: {}", e),
+            ParseError::DuplicateTag(e) => write!(f, "Duplicate tag: {}", e),
+            ParseError::MissingNameTag(e) => write!(f, "Missing name tag: {}", e),
+            ParseError::EmptyQuery(e) => write!(f, "Query without content: {}", e),
+            ParseError::InvalidTagOrder(e) => write!(f, "Invalid tag order: {}", e),
+            ParseError::UnmatchedPlaceholders(e) => write!(f, "Unmatched placeholders: {}", e),
+            ParseError::MalformedSQL(e) => write!(f, "Malformed SQL syntax: {}", e),
+        }
     }
 }
+
 
 impl std::error::Error for ParseError {}
 
@@ -103,6 +124,7 @@ enum LineType {
     Query,
     Comment,
     Tag,
+    EndTag, // to handle multi-statement SQL blocks
 }
 
 #[derive(Debug)]
@@ -130,7 +152,7 @@ struct ParsedLine {
 /// let queries = parse_file("test.sql").expect("error parsing file");
 /// ```
 pub fn parse_file<P: AsRef<Path>>(path: P) -> Result<Queries, ParseError> {
-    let file = File::open(path).map_err(|e| ParseError(format!("error reading file: {}", e)))?;
+    let file = File::open(&path).map_err(|e| ParseError::IOError(format!("Error reading file '{}': {}", path.as_ref().display(), e)))?;
     parse(file)
 }
 
@@ -157,16 +179,16 @@ pub fn parse<R: Read>(reader: R) -> Result<Queries, ParseError> {
     let mut queries = Queries::new();
 
     for (i, line) in BufReader::new(reader).lines().enumerate() {
-        let line = line.map_err(|e| ParseError(format!("error reading line {}: {}", i + 1, e)))?;
+        let line = line.map_err(|e| ParseError::IOError(format!("Error reading line {}: {}", i + 1, e)))?;
         let parsed_line = parse_line(&line);
 
         match parsed_line.line_type {
             LineType::Blank | LineType::Comment => continue,
             LineType::Query => {
                 if name.is_empty() {
-                    return Err(ParseError(format!(
-                        "query is missing the 'name' tag: {}",
-                        parsed_line.value
+                    return Err(ParseError::MissingNameTag(format!(
+                        "Query without 'name' tag found at line {}: '{}'",
+                        i + 1, parsed_line.value
                     )));
                 }
                 let q = queries.entry(name.clone()).or_insert(Query {
@@ -182,12 +204,11 @@ pub fn parse<R: Read>(reader: R) -> Result<Queries, ParseError> {
                 if parsed_line.tag == TAG_NAME {
                     name = parsed_line.value.clone();
                     if queries.contains_key(&name) {
-                        return Err(ParseError(format!(
-                            "duplicate tag {} = {}",
-                            parsed_line.tag, parsed_line.value
+                        return Err(ParseError::DuplicateTag(format!(
+                            "Duplicate query name found: '{}'",
+                            name
                         )));
                     }
-
                     queries.insert(
                         name.clone(),
                         Query {
@@ -197,27 +218,50 @@ pub fn parse<R: Read>(reader: R) -> Result<Queries, ParseError> {
                     );
                 } else {
                     if !queries.contains_key(&name) {
-                        return Err(ParseError("'name' should be the first tag".to_string()));
+                        return Err(ParseError::InvalidTagOrder(format!(
+                            "'name' should be the first tag, found '{}' at line {}",
+                            parsed_line.tag, i + 1
+                        )));
                     }
-
                     let q = queries.get_mut(&name).unwrap();
                     if q.tags.contains_key(&parsed_line.tag) {
-                        return Err(ParseError(format!(
-                            "duplicate tag {} = {}",
-                            parsed_line.tag, parsed_line.value
+                        return Err(ParseError::DuplicateTag(format!(
+                            "Duplicate tag '{}' for query '{}'",
+                            parsed_line.tag, name
                         )));
                     }
                     q.tags.insert(parsed_line.tag, parsed_line.value);
                 }
             }
+            LineType::EndTag => {
+                // Handle the end of a multi-statement query block.
+                name.clear();
+            }
         }
     }
 
+    // Post-validation of all queries to ensure they have content and correct placeholder usage.
     for (name, query) in &queries {
         if query.query.is_empty() {
-            return Err(ParseError(format!("'{}' is missing query", name)));
+            return Err(ParseError::EmptyQuery(format!("Query '{}' is empty", name)));
+        }
+    
+        // Check for correct placeholder sequence.
+        let placeholders: Vec<usize> = RE_PLACEHOLDER.find_iter(&query.query)
+            .map(|m| m.as_str()[1..].parse::<usize>().unwrap()) // Get the numeric part of placeholders like $1.
+            .collect();
+        
+        // Ensure the placeholders are in a proper sequence without duplicates or gaps.
+        for (i, &num) in placeholders.iter().enumerate() {
+            if num != i + 1 {
+                return Err(ParseError::UnmatchedPlaceholders(format!(
+                    "Query '{}' has incorrect placeholder order: expected {}, found {}",
+                    name, i + 1, num
+                )));
+            }
         }
     }
+    
 
     Ok(queries)
 }
@@ -230,6 +274,15 @@ fn parse_line(line: &str) -> ParsedLine {
             line_type: LineType::Blank,
             tag: String::new(),
             value: String::new(),
+        };
+    }
+
+    // Check if the line is an end tag
+    if line.starts_with("-- end") {
+        return ParsedLine {
+            line_type: LineType::EndTag,
+            tag: TAG_END.to_string(),
+            value: String::new(), // Keep value empty as `-- end` does not have associated content.
         };
     }
 
@@ -254,12 +307,14 @@ fn parse_line(line: &str) -> ParsedLine {
     }
 }
 
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
     fn test_parse_line() {
+        // Testing various line types.
         let tests = vec![
             (
                 " ",
@@ -286,11 +341,11 @@ mod tests {
                 },
             ),
             (
-                " -- some: param ",
+                " -- end ",
                 ParsedLine {
-                    line_type: LineType::Tag,
-                    tag: "some".to_string(),
-                    value: "param".to_string(),
+                    line_type: LineType::EndTag,
+                    tag: "end".to_string(),
+                    value: String::new(),
                 },
             ),
             (
@@ -299,14 +354,6 @@ mod tests {
                     line_type: LineType::Comment,
                     tag: String::new(),
                     value: "comment".to_string(),
-                },
-            ),
-            (
-                " --",
-                ParsedLine {
-                    line_type: LineType::Comment,
-                    tag: String::new(),
-                    value: String::new(),
                 },
             ),
         ];
@@ -318,6 +365,7 @@ mod tests {
             assert_eq!(parsed.value, expected.value);
         }
     }
+
 
     #[test]
     fn test_scanner_err_tags() {
@@ -412,4 +460,145 @@ FROM comments;
         let result = parse("-- name: byte-me\nSELECT * FROM bytes;".as_bytes());
         assert!(result.is_ok());
     }
+
+    #[test]
+    fn test_placeholder_validation() {
+        // Testing for consistent placeholder usage.
+        let sql = r#"
+        -- name: valid_query
+        SELECT * FROM users WHERE id = $1;
+        "#;
+
+        let queries = parse(sql.as_bytes());
+        assert!(queries.is_ok(), "Placeholder check failed for valid query.");
+
+        let invalid_sql = r#"
+        -- name: invalid_query
+        SELECT * FROM users WHERE id = $1 AND email = $2 AND age = $1;
+        "#;
+
+        let queries = parse(invalid_sql.as_bytes());
+        assert!(queries.is_err(), "Expected error for inconsistent placeholders.");
+    }
+
+    #[test]
+    fn test_multi_statement_query() {
+        // Testing multi-statement support.
+        let multi_stmt_sql = r#"
+        -- name: transaction_block
+        BEGIN;
+        INSERT INTO users (name, email) VALUES ($1, $2);
+        COMMIT;
+        -- end;
+        "#;
+
+        let queries = parse(multi_stmt_sql.as_bytes()).expect("Failed to parse multi-statement query.");
+        let query = &queries["transaction_block"].query;
+        assert_eq!(query, "BEGIN; INSERT INTO users (name, email) VALUES ($1, $2); COMMIT;");
+    }
+
+    #[test]
+fn test_parse_error_conditions() {
+    // Test duplicate tag error
+    let duplicate_tag_sql = r#"
+    -- name: duplicate_query
+    SELECT * FROM users;
+    -- name: duplicate_query
+    SELECT * FROM users;
+    "#;
+    let result = parse(duplicate_tag_sql.as_bytes());
+    assert!(matches!(result, Err(ParseError::DuplicateTag(_))), "Expected DuplicateTag error");
+
+    // Test missing name tag error
+    let missing_name_tag_sql = r#"
+    SELECT * FROM users;
+    "#;
+    let result = parse(missing_name_tag_sql.as_bytes());
+    assert!(matches!(result, Err(ParseError::MissingNameTag(_))), "Expected MissingNameTag error");
+
+    // Test invalid tag order
+    let invalid_tag_order_sql = r#"
+    -- raw: true
+    SELECT * FROM users;
+    -- name: invalid_order_query
+    "#;
+    let result = parse(invalid_tag_order_sql.as_bytes());
+    assert!(matches!(result, Err(ParseError::InvalidTagOrder(_))), "Expected InvalidTagOrder error");
+
+    // Test empty query
+    let empty_query_sql = r#"
+    -- name: empty_query
+    -- end;
+    "#;
+    let result = parse(empty_query_sql.as_bytes());
+    assert!(matches!(result, Err(ParseError::EmptyQuery(_))), "Expected EmptyQuery error");
+}
+
+#[test]
+fn test_placeholder_sequence_validation() {
+    // Test valid sequence of placeholders
+    let valid_placeholder_sql = r#"
+    -- name: valid_sequence_query
+    SELECT * FROM users WHERE id = $1 AND email = $2;
+    "#;
+    let result = parse(valid_placeholder_sql.as_bytes());
+    assert!(result.is_ok(), "Expected valid sequence of placeholders");
+
+    // Test invalid placeholder sequence
+    let invalid_placeholder_sequence_sql = r#"
+    -- name: invalid_sequence_query
+    SELECT * FROM users WHERE id = $1 AND email = $3;
+    "#;
+    let result = parse(invalid_placeholder_sequence_sql.as_bytes());
+    assert!(matches!(result, Err(ParseError::UnmatchedPlaceholders(_))), "Expected UnmatchedPlaceholders error for sequence");
+
+    // Test duplicate placeholder usage
+    let duplicate_placeholder_sql = r#"
+    -- name: duplicate_placeholder_query
+    SELECT * FROM users WHERE id = $1 AND email = $1;
+    "#;
+    let result = parse(duplicate_placeholder_sql.as_bytes());
+    assert!(matches!(result, Err(ParseError::UnmatchedPlaceholders(_))), "Expected UnmatchedPlaceholders error for duplicates");
+}
+
+#[test]
+fn test_multi_statement_query_parsing() {
+    let multi_stmt_sql = r#"
+    -- name: transaction_block
+    BEGIN;
+    INSERT INTO users (name, email) VALUES ($1, $2);
+    COMMIT;
+    -- end;
+    "#;
+
+    let queries = parse(multi_stmt_sql.as_bytes()).expect("Failed to parse multi-statement query");
+    let query = &queries["transaction_block"].query;
+
+    assert_eq!(query, "BEGIN; INSERT INTO users (name, email) VALUES ($1, $2); COMMIT;");
+}
+
+#[test]
+fn test_tag_validation() {
+    // Test proper tag order
+    let proper_tag_order_sql = r#"
+    -- name: proper_order_query
+    -- raw: true
+    SELECT * FROM users;
+    "#;
+    let result = parse(proper_tag_order_sql.as_bytes());
+    assert!(result.is_ok(), "Expected proper tag order to parse successfully");
+
+    // Test duplicate tag
+    let duplicate_tag_sql = r#"
+    -- name: duplicate_tag_query
+    -- raw: true
+    -- raw: true
+    SELECT * FROM users;
+    "#;
+    let result = parse(duplicate_tag_sql.as_bytes());
+    assert!(matches!(result, Err(ParseError::DuplicateTag(_))), "Expected DuplicateTag error");
+}
+
+
+
 }
