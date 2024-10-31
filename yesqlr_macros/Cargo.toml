@@ -2,6 +2,13 @@
 name = "yesqlr_macros"
 version = "0.2.0"
 edition = "2021"
+authors = ["Kailash Nadh"]
+description = "Macros for parsing SQL files with multiple named queries into a struct."
+license = "MIT"
+homepage = "https://github.com/knadh/yesqlr"
+repository = "https://github.com/knadh/yesqlr"
+keywords = ["sql", "query", "sql-parser", "sql-file"]
+categories = ["database", "parsing"]
 
 [lib]
 proc-macro = true
