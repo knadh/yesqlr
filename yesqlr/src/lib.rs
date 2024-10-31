@@ -61,10 +61,6 @@ use std::collections::HashMap;
 use std::fs::File;
 use std::io::{BufRead, BufReader, Read};
 use std::path::Path;
-pub use yesqlr_macros::ScanQueries;
-
-#[macro_use]
-extern crate yesqlr_macros;
 
 const TAG_NAME: &str = "name";
 
@@ -417,21 +413,5 @@ FROM comments;
                 .as_bytes(),
         );
         assert!(result.is_ok());
-
-        #[derive(Default, ScanQueries)]
-        struct Q {
-            simple: String,
-
-            #[key = "simple2"]
-            simple_two: String,
-
-            another: String,
-        }
-
-        let q: Q = Q::try_from(result.unwrap()).expect("Failed to convert queries to Q");
-
-        assert_eq!(q.simple, "SELECT * FROM simple;");
-        assert_eq!(q.simple_two, "SELECT * FROM simple2;");
-        assert_eq!(q.another, "");
     }
 }

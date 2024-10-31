@@ -13,4 +13,3 @@ categories = ["database", "parsing"]
 [dependencies]
 regex = "1.5"
 lazy_static = "1.4"
-yesqlr_macros = { path = "../yesqlr_macros" }

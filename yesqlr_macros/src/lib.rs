@@ -4,7 +4,7 @@ use proc_macro::TokenStream;
 use quote::quote;
 use syn::{parse_macro_input, DeriveInput, Lit, Meta};
 
-#[proc_macro_derive(ScanQueries, attributes(key))]
+#[proc_macro_derive(ScanQueries, attributes(name))]
 pub fn scan_queries_derive(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
 
@@ -17,8 +17,6 @@ pub fn scan_queries_derive(input: TokenStream) -> TokenStream {
 }
 
 fn generate_try_from(input: &DeriveInput) -> syn::Result<proc_macro2::TokenStream> {
-    let name = &input.ident;
-
     let fields = if let syn::Data::Struct(ref data_struct) = input.data {
         &data_struct.fields
     } else {
@@ -29,30 +27,33 @@ fn generate_try_from(input: &DeriveInput) -> syn::Result<proc_macro2::TokenStrea
     };
 
     let mut map = Vec::new();
+    let name = &input.ident;
 
     for field in fields.iter() {
         let field_name = field.ident.as_ref().unwrap();
-        let mut key = field_name.to_string();
+
+        // Use the field's name as the key by default.
+        let mut query_name = field_name.to_string();
 
         for attr in &field.attrs {
-            if attr.path.is_ident("key") {
+            // If there's a #[name = "..."] attribute, use that as the name.
+            if attr.path.is_ident("name") {
                 if let Ok(Meta::NameValue(meta)) = attr.parse_meta() {
                     if let Lit::Str(lit_str) = meta.lit {
-                        key = lit_str.value();
+                        query_name = lit_str.value();
                     }
                 }
             }
         }
 
-        map.push((field_name, key, &field.ty));
+        map.push((field_name, query_name));
     }
 
-    let extract_fields = map.iter().map(|(field, key, field_type)| {
+    let extract_fields = map.iter().map(|(field, key)| {
         quote! {
             #field: {
-                if let Some(value) = queries.remove(#key) {
-                    convert_query::<#field_type>(&value.query)
-                        .map_err(|e| format!("Failed to convert key '{}': {}", #key, e))?
+                if let Some(query) = queries.remove(#key) {
+                    query
                 } else {
                     Default::default()
                 }
@@ -61,14 +62,10 @@ fn generate_try_from(input: &DeriveInput) -> syn::Result<proc_macro2::TokenStrea
     });
 
     let expanded = quote! {
-        impl std::convert::TryFrom<crate::Queries> for #name {
+        impl std::convert::TryFrom<yesqlr::Queries> for #name {
             type Error = String;
 
-            fn try_from(mut queries: crate::Queries) -> Result<Self, Self::Error> {
-                fn convert_query<T: std::str::FromStr>(value: &str) -> Result<T, String> {
-                    value.parse::<T>().map_err(|_| format!("Failed to parse value: {}", value))
-                }
-
+            fn try_from(mut queries: yesqlr::Queries) -> Result<Self, Self::Error> {
                 Ok(Self {
                     #(#extract_fields,)*
                 })

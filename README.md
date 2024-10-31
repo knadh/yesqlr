@@ -1,7 +1,7 @@
 # yesqlr
 
 yesqlr is a Rust port of the [goyesql](https://github.com/knadh/goyesql) Go library.
-It allows multiple SQL queries to be defined in an `.sql` file, each separate by a specially formatted `--name: $name`
+It allows multiple SQL queries to be defined in an `.sql` file, each separated by a specially formatted `--name: $name`
 accompanying every query, which the library then parses to a HashMap<$name, Query{}>.
 In addition, it also supports attaching arbitrary --$key: $value tags with every query
 This allows better organization and handling of SQL code in Rust projects.
@@ -50,6 +50,30 @@ fn main() -> Result<(), yesqlr::ParseError> {
     let list_users_query = &queries["list_users"].query;
     println!("user query is: {}", list_users_query);
     Ok(())
+}
+```
+
+### Parsing into a struct
+
+```rust
+use yesqlr::parse;
+
+fn main() -> Result<(), yesqlr::ParseError> {
+    // Parse queries from bytes or file first.
+    let result = parse("--name: simple\nSELECT * FROM simple;\n--name: simple2\nSELECT * FROM simple2;").as_bytes();
+
+    // Define the struct. 'name' can be overridden.
+    #[derive(Default, ScanQueries)]
+    struct Q {
+        simple: Query,
+
+        #[name = "simple2"]
+        simple_two: Query,
+
+        another: Query,
+    }
+
+    let q: Q = Q::try_from(result.unwrap()).expect("Failed to convert queries to Q");
 }
 ```
 
