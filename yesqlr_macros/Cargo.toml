@@ -1,6 +1,6 @@
 [package]
 name = "yesqlr_macros"
-version = "0.2.0"
+version = "0.2.1"
 edition = "2021"
 authors = ["Kailash Nadh"]
 description = "Macros for parsing SQL files with multiple named queries into a struct."

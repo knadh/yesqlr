@@ -176,6 +176,7 @@ pub fn parse<R: Read>(reader: R) -> Result<Queries, ParseError> {
                     q.query.push(' ');
                 }
                 q.query.push_str(&parsed_line.value);
+                q.query.push_str("\n");
             }
             LineType::Tag => {
                 if parsed_line.tag == TAG_NAME {
@@ -344,7 +345,7 @@ SELECT * FROM missing;
 SELECT * FROM simple;
 -- name: multiline
 SELECT *
-FROM multiline
+FROM multiline -- test
 WHERE line = 42;
 -- name: comments
 -- yoyo
@@ -357,8 +358,11 @@ FROM comments;
 
         let expected_queries: HashMap<&str, &str> = [
             ("simple", "SELECT * FROM simple;"),
-            ("multiline", "SELECT * FROM multiline WHERE line = 42;"),
-            ("comments", "SELECT * FROM comments;"),
+            (
+                "multiline",
+                "SELECT *\n FROM multiline -- test\n WHERE line = 42;",
+            ),
+            ("comments", "SELECT *\n FROM comments;"),
         ]
         .iter()
         .cloned()
@@ -392,11 +396,11 @@ FROM comments;
         );
         assert_eq!(
             queries["simple"].query,
-            String::from("SELECT * FROM simple;")
+            String::from("SELECT * FROM simple;\n")
         );
         assert_eq!(
             queries["simple2"].query,
-            String::from("SELECT * FROM simple2;")
+            String::from("SELECT * FROM simple2;\n")
         );
     }
 
@@ -409,9 +413,17 @@ FROM comments;
     #[test]
     fn test_parse_bytes() {
         let result = parse(
-            "--name: simple\nSELECT * FROM simple;\n--name: simple2\nSELECT * FROM simple2;"
+            "--name: simple\nSELECT * FROM simple;\n--name: simple2\nSELECT * FROM simple2\n WHERE 1;"
                 .as_bytes(),
+        )
+        .unwrap();
+        assert_eq!(
+            result["simple"].query,
+            String::from("SELECT * FROM simple;\n")
         );
-        assert!(result.is_ok());
+        assert_eq!(
+            result["simple2"].query,
+            String::from("SELECT * FROM simple2\n WHERE 1;\n")
+        );
     }
 }

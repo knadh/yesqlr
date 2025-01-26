@@ -1,6 +1,6 @@
 [package]
 name = "yesqlr"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 authors = ["Kailash Nadh"]
 description = "Parse SQL files with multiple named queries into a map. Port of goyesql."

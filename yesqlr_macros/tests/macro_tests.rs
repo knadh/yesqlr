@@ -20,8 +20,8 @@ mod tests {
 
         let q: Q = Q::try_from(result.unwrap()).expect("errong converting queries to Q");
 
-        assert_eq!(q.simple.query, "SELECT * FROM simple;");
-        assert_eq!(q.simple_two.query, "SELECT * FROM simple2;");
+        assert_eq!(q.simple.query, "SELECT * FROM simple;\n");
+        assert_eq!(q.simple_two.query, "SELECT * FROM simple2;\n");
         assert_eq!(q.another.query, "");
     }
 }
