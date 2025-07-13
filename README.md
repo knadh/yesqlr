@@ -3,7 +3,7 @@
 yesqlr is a Rust port of the [goyesql](https://github.com/knadh/goyesql) Go library.
 It allows multiple SQL queries to be defined in an `.sql` file, each separated by a specially formatted `--name: $name`
 accompanying every query, which the library then parses to a HashMap<$name, Query{}>.
-In addition, it also supports attaching arbitrary --$key: $value tags with every query
+In addition, it also supports attaching arbitrary --$key: $value tags with every query.
 This allows better organization and handling of SQL code in Rust projects.
 
 
